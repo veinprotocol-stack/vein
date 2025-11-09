@@ -1,87 +1,70 @@
 // src/app/api/chat/stream/route.ts
-import type { NextRequest } from "next/server";
+// Node runtime (so we can keep a process-level subscriber set)
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-export const runtime = "nodejs"; // keep Node timers & SSE
-
-// ---- very small in-memory SSE hub ----
 type Client = {
   id: number;
-  enqueue: (chunk: string) => void;
-  // cross-env safe timer type
-  ping?: ReturnType<typeof setInterval>;
+  enqueue: (chunk: Uint8Array) => void;
 };
 
-const clients: Client[] =
-  (globalThis as any).__VEIN_SSE_CLIENTS__ ?? ((globalThis as any).__VEIN_SSE_CLIENTS__ = []);
+// Persist subscribers across route invocations in the same lambda/process
+const globalAny = global as any;
+const subscribers: Set<Client> = globalAny.__vein_chat_subs ?? new Set<Client>();
+globalAny.__vein_chat_subs = subscribers;
 
-// broadcast helper
-function pushAll(chunk: string) {
-  for (const c of clients) {
+const enc = new TextEncoder();
+
+/** Broadcast a message to all connected SSE clients */
+export function broadcastMessage(payload: unknown) {
+  const bytes = enc.encode(`data: ${JSON.stringify(payload)}\n\n`);
+  for (const sub of Array.from(subscribers)) {
     try {
-      c.enqueue(chunk);
+      sub.enqueue(bytes);
     } catch {
-      // ignore broken pipes; cleanup happens on cancel
+      // If enqueue fails (client closed), drop it
+      subscribers.delete(sub);
     }
   }
 }
 
-// ---- GET: open SSE stream ----
-export async function GET(_req: NextRequest) {
+/** GET /api/chat/stream  →  Server-Sent Events stream */
+export async function GET(req: Request) {
   const id = Date.now() + Math.random();
 
-  const stream = new ReadableStream<string>({
+  const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      const enqueue = (chunk: string) => controller.enqueue(chunk);
+      // add client
+      subscribers.add({
+        id,
+        enqueue: (chunk) => controller.enqueue(chunk),
+      });
 
-      // register client
-      const client: Client = { id, enqueue };
-      clients.push(client);
+      // initial comment (keeps some proxies happy)
+      controller.enqueue(enc.encode(`: connected ${id}\n\n`));
 
-      // initial hello
-      enqueue(`event: open\ndata: "ok"\n\n`);
-
-      // keep-alive ping every 20s
-      client.ping = setInterval(() => {
-        enqueue(`event: ping\ndata: "1"\n\n`);
-      }, 20000);
+      // remove when client disconnects
+      const abort = () => {
+        subscribers.forEach((c) => c.id === id && subscribers.delete(c));
+        try {
+          controller.close();
+        } catch {}
+      };
+      // @ts-ignore - Request in Next has a signal
+      req.signal?.addEventListener?.("abort", abort);
     },
     cancel() {
-      // remove client & clear ping
-      const idx = clients.findIndex((c) => c.id === id);
-      if (idx !== -1) {
-        const [c] = clients.splice(idx, 1);
-        if (c?.ping) clearInterval(c.ping);
-      }
+      subscribers.forEach((c) => c.id === id && subscribers.delete(c));
     },
   });
 
   return new Response(stream, {
     headers: {
-      "Content-Type": "text/event-stream; charset=utf-8",
+      "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
-      // avoids proxies buffering
-      "X-Accel-Buffering": "no",
+      // CORS (optional, helpful during local dev)
+      "Access-Control-Allow-Origin": "*",
     },
   });
-}
-
-// ---- POST: push a message ----
-// body: { room: string; text: string; me?: string }
-export async function POST(req: NextRequest) {
-  try {
-    const { room, text, me } = (await req.json()) as {
-      room: string;
-      text: string;
-      me?: string;
-    };
-
-    // stamp on server to avoid "Invalid Date" on clients
-    const payload = JSON.stringify({ room, text, me, ts: Date.now() });
-    pushAll(`event: message\ndata: ${payload}\n\n`);
-
-    return Response.json({ ok: true });
-  } catch (e) {
-    return new Response("bad request", { status: 400 });
-  }
 }
