@@ -1,82 +1,87 @@
-// Server-Sent Events stream for all rooms
-// Runtime must be Node to preserve global memory between requests.
-export const runtime = "nodejs";
+// src/app/api/chat/stream/route.ts
+import type { NextRequest } from "next/server";
 
-type Msg = { room: string; text: string; me: string; ts: number };
+export const runtime = "nodejs"; // keep Node timers & SSE
 
-// ---- Global registries (persist across hot reloads in dev) ----
-const g = globalThis as unknown as {
-  __sse_clients?: Set<ReadableStreamDefaultController<Uint8Array>>;
-  __sse_history?: Msg[];
+// ---- very small in-memory SSE hub ----
+type Client = {
+  id: number;
+  enqueue: (chunk: string) => void;
+  // cross-env safe timer type
+  ping?: ReturnType<typeof setInterval>;
 };
-g.__sse_clients ??= new Set();
-g.__sse_history ??= []; // optional: last ~100 messages
-const clients = g.__sse_clients;
-const history = g.__sse_history;
 
-const enc = new TextEncoder();
-const sse = (event: string, data: any) =>
-  enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+const clients: Client[] =
+  (globalThis as any).__VEIN_SSE_CLIENTS__ ?? ((globalThis as any).__VEIN_SSE_CLIENTS__ = []);
 
-export async function GET() {
-  // Create a readable stream for this client
-  const stream = new ReadableStream<Uint8Array>({
+// broadcast helper
+function pushAll(chunk: string) {
+  for (const c of clients) {
+    try {
+      c.enqueue(chunk);
+    } catch {
+      // ignore broken pipes; cleanup happens on cancel
+    }
+  }
+}
+
+// ---- GET: open SSE stream ----
+export async function GET(_req: NextRequest) {
+  const id = Date.now() + Math.random();
+
+  const stream = new ReadableStream<string>({
     start(controller) {
-      // Register client
-      clients.add(controller);
+      const enqueue = (chunk: string) => controller.enqueue(chunk);
 
-      // Send a hello + recent history so newcomers see something
-      controller.enqueue(sse("ping", { ok: true }));
+      // register client
+      const client: Client = { id, enqueue };
+      clients.push(client);
 
-      // Replay up to 100 last messages (optional)
-      for (const m of history) controller.enqueue(sse("message", m));
+      // initial hello
+      enqueue(`event: open\ndata: "ok"\n\n`);
 
-      // Keep-alive pings (important for proxies)
-      const iv = setInterval(() => {
-        try {
-          controller.enqueue(sse("ping", { t: Date.now() }));
-        } catch {
-          /* ignore */
-        }
-      }, 15000);
-
-      // Cleanup when client disconnects
-      // (called if the connection is closed by the browser)
-      (controller as any)._iv = iv;
+      // keep-alive ping every 20s
+      client.ping = setInterval(() => {
+        enqueue(`event: ping\ndata: "1"\n\n`);
+      }, 20000);
     },
-    cancel(reason) {
-      // Remove and cleanup
-      clients.delete(this as any);
-      try {
-        // @ts-ignore
-        const iv = (this as any)._iv as NodeJS.Timer | undefined;
-        if (iv) clearInterval(iv);
-      } catch {}
+    cancel() {
+      // remove client & clear ping
+      const idx = clients.findIndex((c) => c.id === id);
+      if (idx !== -1) {
+        const [c] = clients.splice(idx, 1);
+        if (c?.ping) clearInterval(c.ping);
+      }
     },
   });
 
   return new Response(stream, {
     headers: {
-      "Content-Type": "text/event-stream",
+      "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
-      // Helpful for some hosts/CDNs:
+      // avoids proxies buffering
       "X-Accel-Buffering": "no",
     },
   });
 }
 
-// Helper used by /send to push to all connected clients
-export function broadcastMessage(msg: Msg) {
-  // keep small rolling history
-  history.push(msg);
-  if (history.length > 100) history.shift();
+// ---- POST: push a message ----
+// body: { room: string; text: string; me?: string }
+export async function POST(req: NextRequest) {
+  try {
+    const { room, text, me } = (await req.json()) as {
+      room: string;
+      text: string;
+      me?: string;
+    };
 
-  for (const c of clients) {
-    try {
-      c.enqueue(sse("message", msg));
-    } catch {
-      clients.delete(c);
-    }
+    // stamp on server to avoid "Invalid Date" on clients
+    const payload = JSON.stringify({ room, text, me, ts: Date.now() });
+    pushAll(`event: message\ndata: ${payload}\n\n`);
+
+    return Response.json({ ok: true });
+  } catch (e) {
+    return new Response("bad request", { status: 400 });
   }
 }
