@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 // Edge runtime provides WebSocketPair + server.accept()
 declare const WebSocketPair: { new (): [WebSocket, WebSocket] };
 type ServerSocket = WebSocket & { accept: () => void };
+type EdgeResponseInit = ResponseInit & { webSocket?: WebSocket };
 
 // persist rooms across requests on the same worker
 const g = globalThis as unknown as { __vein_rooms?: Map<string, Set<WebSocket>> };
@@ -18,8 +19,7 @@ export async function GET(req: Request) {
   const client = pair[0] as WebSocket;
   const server = pair[1] as ServerSocket;
 
-  // accept the server end (Edge API)
-  server.accept();
+  server.accept(); // Edge API
 
   if (!rooms.has(room)) rooms.set(room, new Set());
   const set = rooms.get(room)!;
@@ -43,5 +43,6 @@ export async function GET(req: Request) {
   server.addEventListener("close", cleanup);
   server.addEventListener("error", cleanup);
 
-  return new Response(null, { status: 101, webSocket: client });
+  // ⬇️ Cast to EdgeResponseInit so TS accepts `webSocket`
+  return new Response(null, { status: 101, webSocket: client } as EdgeResponseInit);
 }
