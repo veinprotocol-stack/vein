@@ -120,7 +120,7 @@ export default function MinePage() {
 
       {/* Dark veil so UI stays readable */}
       <div className="relative min-h-screen w-full bg-gradient-to-b from-black/85 via-black/90 to-black/95">
-        <main className="mx-auto max-w-[1600px] xl:scale-[1.50] xl:origin-top grid grid-cols-1 xl:grid-cols-[320px_1fr_380px] gap-8 pt-6">
+        <main className="mx-auto max-w-[1600px] grid grid-cols-1 xl:grid-cols-[320px_1fr_380px] gap-8 pt-6 px-4 xl:px-8">
           {/* LEFT: Cognitive Channel */}
           <aside className="hidden xl:block">
             <div className="sticky top-24">
