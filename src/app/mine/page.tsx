@@ -5,7 +5,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import ChatBox from "@/components/ChatBox";
 
 // ⬇️ adjust this path / filename to match your actual background file
-import veinBg from "@/assets/vein-bg.jpg";
+import veinBg from "@/assets/vein-bg.png";
 
 /* ---------------- types + data ---------------- */
 type Tile = {
@@ -237,7 +237,6 @@ export default function MinePage() {
                     <span className="text-text-base">Commit</span>.
                   </li>
                   <li>Sync resets every heartbeat.</li>
-                  <li>Prototype — wallet & payouts later.</li>
                 </ul>
                 <button
                   onClick={commit}
@@ -248,7 +247,7 @@ export default function MinePage() {
                 </button>
               </div>
 
-              <div className="card p-4">
+              <div className="card p-4 space-y-4">
                 <div className="flex items-center gap-2 flex-wrap">
                   <ModeTabs />
                   <div className="ml-auto flex items-center gap-2 text-sm">
@@ -262,15 +261,17 @@ export default function MinePage() {
                     <button className="h-9 px-3 rounded-lg border border-line bg-panel text-sm hover:border-accent/60 focus-visible:outline-none">
                       +0.01
                     </button>
-                    <div className="ml-3 font-mono">1.0</div>
                   </div>
                 </div>
 
-                <div className="mt-4 h-11 rounded-xl bg-line/30 flex items-center justify-center text-text-base">
+                {/* Deploy button */}
+                <button
+                  className="w-full h-11 rounded-xl bg-line/30 flex items-center justify-center text-text-base border border-line hover:border-accent/60 transition focus-visible:outline-none"
+                >
                   Deploy
-                </div>
+                </button>
 
-                <div className="mt-2 flex items-center justify-between text-xs text-text-dim">
+                <div className="flex items-center justify-between text-xs text-text-dim">
                   <span>x0</span>
                   <span>0 SOL</span>
                 </div>
