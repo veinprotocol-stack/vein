@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import ChatBox from "@/components/ChatBox";
 
-// Background sigil art
+// ⬇️ adjust this path / filename to match your actual background file
 import veinBg from "@/assets/vein-bg.png";
 
 /* ---------------- types + data ---------------- */
@@ -102,25 +102,25 @@ export default function MinePage() {
       return copy;
     });
   }
-
+  
   // Biomech stats
   const heartRate = 80;
   const neuralYieldTotal = 12.4258;
 
   return (
-    <div className="relative min-h-screen w-full bg-black overflow-hidden">
-      {/* Sigil background overlay */}
-      <div
-        className="pointer-events-none absolute inset-0 bg-center bg-no-repeat opacity-35"
-        style={{
-          backgroundImage: `url(${veinBg.src})`,
-          backgroundSize: "min(1100px, 90vh)",
-        }}
-      />
+    <div className="relative min-h-screen w-full bg-black">
+      {/* Sigil layer (centered, transparent) */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <img
+          src={veinBg.src}
+          alt=""
+          className="w-full max-w-[1100px] opacity-20 object-contain"
+        />
+      </div>
 
       {/* Dark veil so UI stays readable */}
-      <div className="relative min-h-screen w-full bg-gradient-to-b from-black/85 via-black/90 to-black/95">
-        <main className="mx-auto max-w-[1600px] grid grid-cols-1 xl:grid-cols-[320px_1fr_380px] gap-8 pt-6 px-4 xl:px-8">
+      <div className="relative min-h-screen w-full bg-black/70">
+        <main className="mx-auto max-w-[1600px] xl:scale-[1.50] xl:origin-top grid grid-cols-1 xl:grid-cols-[320px_1fr_380px] gap-8 pt-6">
           {/* LEFT: Cognitive Channel */}
           <aside className="hidden xl:block">
             <div className="sticky top-24">
@@ -252,12 +252,17 @@ export default function MinePage() {
                 </button>
               </div>
 
-              {/* DEPLOY SECTION */}
+              {/* Deploy card (unchanged from your current working version) */}
               <div className="card p-4 space-y-4">
-                {/* Top row: tabs + blocks */}
-                <div className="flex items-center gap-3 flex-wrap">
+                {/* Tabs row */}
+                <div className="flex items-center">
                   <ModeTabs />
-                  <div className="ml-auto flex items-center gap-2 text-xs sm:text-sm">
+                </div>
+
+                {/* 0 SOL + increment buttons row */}
+                <div className="flex items-center justify-between text-xs text-text-dim">
+                  <span>0 SOL</span>
+                  <div className="flex items-center gap-2 text-xs">
                     <button className="h-8 px-3 rounded-md border border-line bg-panel hover:border-accent/60 focus-visible:outline-none">
                       +1
                     </button>
@@ -270,12 +275,7 @@ export default function MinePage() {
                   </div>
                 </div>
 
-                {/* Row: 0 SOL (current input) */}
-                <div className="flex items-center justify-between text-xs text-text-dim">
-                  <span>0 SOL</span>
-                </div>
-
-                {/* Row: SOL token + amount */}
+                {/* SOL row */}
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
                     <div className="h-5 w-5 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400" />
@@ -284,7 +284,7 @@ export default function MinePage() {
                   <span className="font-mono text-lg">1.0</span>
                 </div>
 
-                {/* Row: Blocks / Total */}
+                {/* Blocks + Total rows */}
                 <div className="flex items-center justify-between text-xs text-text-dim">
                   <span>Blocks</span>
                   <span>x0</span>
@@ -308,6 +308,7 @@ export default function MinePage() {
     </div>
   );
 }
+
 
 /* ---------------- little UI helpers ---------------- */
 function StatCard({ label, value }: { label: string; value: string }) {
