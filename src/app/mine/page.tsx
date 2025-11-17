@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import ChatBox from "@/components/ChatBox";
 
-// ⬇️ adjust this path / filename to match your actual background file
+// Background sigil art
 import veinBg from "@/assets/vein-bg.png";
 
 /* ---------------- types + data ---------------- */
@@ -108,13 +108,18 @@ export default function MinePage() {
   const neuralYieldTotal = 12.4258;
 
   return (
-    // ⬇️ Background wrapper with image
-    <div
-      className="min-h-screen w-full bg-cover bg-center bg-no-repeat"
-      style={{ backgroundImage: `url(${veinBg.src})` }}
-    >
-      {/* Dark overlay so UI is readable */}
-      <div className="min-h-screen w-full bg-black/70">
+    <div className="relative min-h-screen w-full bg-black overflow-hidden">
+      {/* Sigil background overlay */}
+      <div
+        className="pointer-events-none absolute inset-0 bg-center bg-no-repeat opacity-35"
+        style={{
+          backgroundImage: `url(${veinBg.src})`,
+          backgroundSize: "min(1100px, 90vh)",
+        }}
+      />
+
+      {/* Dark veil so UI stays readable */}
+      <div className="relative min-h-screen w-full bg-gradient-to-b from-black/85 via-black/90 to-black/95">
         <main className="mx-auto max-w-[1600px] xl:scale-[1.50] xl:origin-top grid grid-cols-1 xl:grid-cols-[320px_1fr_380px] gap-8 pt-6">
           {/* LEFT: Cognitive Channel */}
           <aside className="hidden xl:block">
@@ -247,34 +252,54 @@ export default function MinePage() {
                 </button>
               </div>
 
+              {/* DEPLOY SECTION */}
               <div className="card p-4 space-y-4">
-                <div className="flex items-center gap-2 flex-wrap">
+                {/* Top row: tabs + blocks */}
+                <div className="flex items-center gap-3 flex-wrap">
                   <ModeTabs />
-                  <div className="ml-auto flex items-center gap-2 text-sm">
-                    <span className="text-text-dim">Blocks</span>
-                    <button className="h-9 px-3 rounded-lg border border-line bg-panel text-sm hover:border-accent/60 focus-visible:outline-none">
+                  <div className="ml-auto flex items-center gap-2 text-xs sm:text-sm">
+                    <button className="h-8 px-3 rounded-md border border-line bg-panel hover:border-accent/60 focus-visible:outline-none">
                       +1
                     </button>
-                    <button className="h-9 px-3 rounded-lg border border-line bg-panel text-sm hover:border-accent/60 focus-visible:outline-none">
+                    <button className="h-8 px-3 rounded-md border border-line bg-panel hover:border-accent/60 focus-visible:outline-none">
                       +0.1
                     </button>
-                    <button className="h-9 px-3 rounded-lg border border-line bg-panel text-sm hover:border-accent/60 focus-visible:outline-none">
+                    <button className="h-8 px-3 rounded-md border border-line bg-panel hover:border-accent/60 focus-visible:outline-none">
                       +0.01
                     </button>
                   </div>
                 </div>
 
+                {/* Row: 0 SOL (current input) */}
+                <div className="flex items-center justify-between text-xs text-text-dim">
+                  <span>0 SOL</span>
+                </div>
+
+                {/* Row: SOL token + amount */}
+                <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="h-5 w-5 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-400" />
+                    <span className="font-medium">SOL</span>
+                  </div>
+                  <span className="font-mono text-lg">1.0</span>
+                </div>
+
+                {/* Row: Blocks / Total */}
+                <div className="flex items-center justify-between text-xs text-text-dim">
+                  <span>Blocks</span>
+                  <span>x0</span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-text-dim">
+                  <span>Total</span>
+                  <span>0 SOL</span>
+                </div>
+
                 {/* Deploy button */}
                 <button
-                  className="w-full h-11 rounded-xl bg-line/30 flex items-center justify-center text-text-base border border-line hover:border-accent/60 transition focus-visible:outline-none"
+                  className="mt-1 w-full h-11 rounded-full bg-line/30 border border-line flex items-center justify-center text-sm font-medium text-text-base hover:border-accent/60 hover:bg-line/40 transition focus-visible:outline-none"
                 >
                   Deploy
                 </button>
-
-                <div className="flex items-center justify-between text-xs text-text-dim">
-                  <span>x0</span>
-                  <span>0 SOL</span>
-                </div>
               </div>
             </div>
           </aside>
