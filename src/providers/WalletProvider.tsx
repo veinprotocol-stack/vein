@@ -9,7 +9,14 @@ import {
 } from "@solana/wallet-adapter-wallets";
 
 export default function SolanaWalletProvider({ children }: { children: ReactNode }) {
-  const endpoint = process.env.NEXT_PUBLIC_RPC || "https://api.mainnet-beta.solana.com";
+  // Use your Helius RPC from .env
+  const endpoint = useMemo(
+    () =>
+      process.env.NEXT_PUBLIC_SOLANA_RPC ||
+      process.env.NEXT_PUBLIC_HELIUS_RPC ||
+      "https://api.mainnet-beta.solana.com",
+    []
+  );
 
   const wallets = useMemo(
     () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],

@@ -12,17 +12,17 @@ export const metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="antialiased">
-      <body className="body-noise bg-black text-foreground">
-        {/* 🔮 Global animated background */}
+    <html lang="en" className="h-full antialiased">
+      <body className="body-noise bg-black text-foreground min-h-screen">
+        {/* Animated background */}
         <VeinBackground />
 
         <SolanaWalletProvider>
-          {/* Ensure content sits above the fixed background */}
-          <div className="relative z-10 max-w-6xl mx-auto px-4 app-root">
+          {/* Full-height app container */}
+          <div className="relative z-10 flex min-h-screen flex-col w-full app-root">
             {/* Header */}
             <header className="sticky top-0 z-20 bg-bg/60 backdrop-blur supports-[backdrop-filter]:bg-bg/50">
-              <div className="flex items-center justify-between py-4">
+              <div className="max-w-6xl mx-auto px-4 flex items-center justify-between py-4">
                 <div className="flex items-center gap-3">
                   <div className="h-6 w-6 rounded-full bg-accent" />
                   <span className="font-semibold tracking-wide">VEIN</span>
@@ -40,8 +40,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <div className="divider" />
             </header>
 
-            {/* Page */}
-            <main className="py-6">{children}</main>
+            {/* Page content (no extra bottom padding) */}
+            <main className="flex-1 px-4 sm:px-6 lg:px-10 pt-6 pb-0">
+              {children}
+            </main>
           </div>
         </SolanaWalletProvider>
       </body>
