@@ -729,7 +729,7 @@ export default function MinePage() {
                   {launchCountdown}
                 </div>
                 <p className="mt-4 text-[11px] text-text-dim">
-                   Launching when the timer ends
+                   Launching at 8 PM UTC • Nov 19
                 </p>
               </div>
             </div>

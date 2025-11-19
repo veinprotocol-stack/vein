@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 const organClusters = [
   { name: "Cortex Lattice", pressure: "0.4287", status: "Stable" },
   { name: "Spinal Array", pressure: "0.3912", status: "Rising" },
@@ -15,19 +17,71 @@ const eventStream = [
   { label: "Drift", text: "Baseline lattice weight increased across outer tissue." },
 ];
 
+// Same launch time as Mine page: 1:30 AM IST, Nov 20 2025 = 2025-11-19T20:00:00Z
+const LAUNCH_AT = new Date("2025-11-19T20:00:00Z").getTime();
+
 export default function ExplorePage() {
+  // ⏱ Launch countdown
+  const [now, setNow] = useState<number>(Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const beforeLaunch = now < LAUNCH_AT;
+  const diff = Math.max(0, LAUNCH_AT - now);
+  const secs = Math.floor(diff / 1000);
+  const hh = String(Math.floor(secs / 3600)).padStart(2, "0");
+  const mm = String(Math.floor((secs % 3600) / 60)).padStart(2, "0");
+  const ss = String(secs % 60).padStart(2, "0");
+  const launchCountdown = `${hh}:${mm}:${ss}`;
+
+  // One-time pseudo-values to avoid hydration mismatch
+  const [cellPressures] = useState<string[]>(
+    () =>
+      Array.from({ length: 9 }, () =>
+        (0.22 + Math.random() * 0.3).toFixed(4)
+      )
+  );
+
+  const [clusterWidths] = useState<number[]>(
+    () => organClusters.map(() => 40 + Math.random() * 55)
+  );
+
   return (
     <main className="max-w-6xl mx-auto py-14 animate-fadeIn">
       {/* Header */}
-      <header className="text-center mb-10">
+      <header className="text-center mb-10 relative">
         <h1 className="text-2xl font-semibold mb-3 tracking-wide text-accent">
           Network Observatory
         </h1>
         <p className="text-text-dim max-w-2xl mx-auto leading-relaxed text-sm sm:text-base">
-          Watch the synthetic body from above. The observatory surfaces organ-clusters,
-          lattice pressure, and recent events so you can feel how VEIN is breathing
-          in real time.
+          Watch the synthetic body from above. The observatory surfaces
+          organ-clusters, lattice pressure, and recent events so you can feel
+          how VEIN is breathing in real time.
         </p>
+
+        {/* Genesis badge + countdown */}
+        <div className="mt-4 flex flex-col items-center gap-1 text-[11px] text-text-dim">
+          {beforeLaunch ? (
+            <>
+              <span className="px-3 py-1 rounded-full border border-line/70 bg-black/40 uppercase tracking-[0.18em]">
+                Genesis Preview • Telemetry Mock
+              </span>
+              <span className="font-mono text-xs text-accent/90">
+                Mining surface activates in {launchCountdown}
+              </span>
+              <span className="opacity-70">
+                Launching at 8 PM UTC • Nov 19
+              </span>
+            </>
+          ) : (
+            <span className="px-3 py-1 rounded-full border border-line/70 bg-black/40 uppercase tracking-[0.18em] text-accent">
+              Live • Backed by mining surface
+            </span>
+          )}
+        </div>
       </header>
 
       {/* Top stat strip */}
@@ -50,7 +104,11 @@ export default function ExplorePage() {
         <StatCard
           label="24h synthetic volume"
           value="18.42 SOL"
-          sub="Cumulative flow routed through the organism."
+          sub={
+            beforeLaunch
+              ? "Pre-genesis projection based on seed configuration."
+              : "Cumulative flow routed through the organism."
+          }
         />
       </section>
 
@@ -60,9 +118,12 @@ export default function ExplorePage() {
         <div className="card p-5 flex flex-col">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h2 className="text-sm font-medium text-text-base">Lattice Heatmap</h2>
+              <h2 className="text-sm font-medium text-text-base">
+                Lattice Heatmap
+              </h2>
               <p className="text-[11px] text-text-dim mt-1">
-                Stylized view of the 3×3 organ grid. Brighter cells = higher synthetic pressure.
+                Stylized view of the 3×3 organ grid. Brighter cells = higher
+                synthetic pressure.
               </p>
             </div>
             <span className="px-2 py-1 rounded-full border border-line text-[10px] uppercase tracking-wide text-text-dim">
@@ -97,7 +158,7 @@ export default function ExplorePage() {
                 <div className="relative h-full w-full flex flex-col items-center justify-center py-4">
                   <span className="text-[11px] text-text-dim mb-1">{name}</span>
                   <span className="text-xs font-mono">
-                    {(0.22 + Math.random() * 0.3).toFixed(4)}
+                    {cellPressures[i]}
                   </span>
                 </div>
               </div>
@@ -105,8 +166,8 @@ export default function ExplorePage() {
           </div>
 
           <p className="mt-4 text-[11px] text-text-dim">
-            Live version will pull directly from the mining surface, reflecting organ-node
-            weights and recent commits.
+            Live version will pull directly from the mining surface, reflecting
+            organ-node weights and recent commits.
           </p>
         </div>
 
@@ -116,12 +177,12 @@ export default function ExplorePage() {
             Cluster Pressure Table
           </h2>
           <p className="text-[11px] text-text-dim mb-4">
-            Synthetic readout of composite regions. Values represent aggregated flow
-            density across grouped nodes.
+            Synthetic readout of composite regions. Values represent aggregated
+            flow density across grouped nodes.
           </p>
 
           <div className="space-y-2 text-left">
-            {organClusters.map((c) => (
+            {organClusters.map((c, idx) => (
               <div
                 key={c.name}
                 className="flex items-center justify-between py-2 px-2 rounded-lg bg-black/30 border border-line/50"
@@ -135,7 +196,7 @@ export default function ExplorePage() {
                     <div
                       className="h-full bg-accent/70"
                       style={{
-                        width: `${40 + Math.random() * 55}%`,
+                        width: `${clusterWidths[idx]}%`,
                       }}
                     />
                   </div>
@@ -146,8 +207,8 @@ export default function ExplorePage() {
           </div>
 
           <p className="mt-4 text-[11px] text-text-dim">
-            Future: hook this table to on-chain stats or off-chain indexers for true
-            cluster health metrics.
+            Future: hook this table to on-chain stats or off-chain indexers for
+            true cluster health metrics.
           </p>
         </div>
       </section>
@@ -159,7 +220,7 @@ export default function ExplorePage() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-medium text-text-base">Event Stream</h2>
             <span className="text-[10px] px-2 py-1 rounded-full bg-black/40 text-text-dim border border-line/60">
-              Live log • Coming soon
+              {beforeLaunch ? "Simulated log" : "Live log • Coming soon"}
             </span>
           </div>
 
