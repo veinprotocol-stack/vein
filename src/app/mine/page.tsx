@@ -64,9 +64,14 @@ function makeLiveTiles(): Tile[] {
 // key for persistent round timing
 const ROUND_KEY = "vein_round_end_at_v1";
 
+// how much pressure one wallet can contribute per round
+const PRESSURE_UNIT = 0.05;
+
+// VEIN genesis launch time — 1:30 AM IST, Nov 20 2025 = 2025-11-19T20:00:00Z
+const LAUNCH_AT = new Date("2025-11-19T20:00:00Z").getTime();
+
 /* ---------------- page ---------------- */
 export default function MinePage() {
-  // Chat identity
   const wallet = useWallet();
   const { connection } = useConnection();
 
@@ -83,6 +88,9 @@ export default function MinePage() {
 
   const [winnerId, setWinnerId] = useState<number | null>(null);
 
+  // which node this wallet has committed pressure to in this round
+  const [committedNodeId, setCommittedNodeId] = useState<number | null>(null);
+
   // Persistent round end timestamp
   const roundEndRef = useRef<number | null>(null);
 
@@ -91,39 +99,61 @@ export default function MinePage() {
   const [rampActive, setRampActive] = useState<boolean>(false);
 
   // Deploy controls
-  const unitSol = 1; // 1 SOL per “+1” click now
-  const [blocks, setBlocks] = useState<number>(0); // interpret as SOL amount (for “Multiplier” row)
-  const [totalSol, setTotalSol] = useState<number>(0); // actual SOL amount
+  const unitSol = 1;
+  const [blocks, setBlocks] = useState<number>(0);
+  const [totalSol, setTotalSol] = useState<number>(0);
 
   // “Economy” stats
   const [networkSeed] = useState<number>(() =>
     parseFloat((5 + Math.random() * 3).toFixed(4)) // 5–8 SOL seed
   );
-  const [myInjected, setMyInjected] = useState<number>(0); // this wallet only
+  const [myInjected, setMyInjected] = useState<number>(0);
 
   // derived global yield: seed + sum of all tile weights + your deploys
   const globalWeight = tiles.reduce((sum, t) => sum + t.totalWeight, 0);
   const baseNeuralYield = networkSeed + globalWeight + myInjected;
 
-  // Display versions respect the phaseFactor (0 after round, ramps back to 1)
   const neuralYieldDisplay = parseFloat(
     (baseNeuralYield * phaseFactor).toFixed(4)
   );
   const surgeDisplay = parseFloat((neuralYieldDisplay * 0.1).toFixed(2));
 
-  // initial mount
+  // ⏱ Launch countdown state
+  const [now, setNow] = useState<number>(Date.now());
+
   useEffect(() => {
-    setTiles(makeLiveTiles());
-    setReady(true);
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
   }, []);
+
+  const beforeLaunch = now < LAUNCH_AT;
+  const diff = Math.max(0, LAUNCH_AT - now);
+  const secs = Math.floor(diff / 1000);
+  const hh = String(Math.floor(secs / 3600)).padStart(2, "0");
+  const mm = String(Math.floor((secs % 3600) / 60)).padStart(2, "0");
+  const ss = String(secs % 60).padStart(2, "0");
+  const launchCountdown = `${hh}:${mm}:${ss}`;
+
+  // 🔒 When true, freeze all simulation logic (rounds, drift, commit, deploy)
+  const simulationLocked = beforeLaunch;
+
+  // initial mount / react to lock-unlock
+  useEffect(() => {
+    if (simulationLocked) {
+      setTiles(blankTiles);
+    } else {
+      setTiles(makeLiveTiles());
+    }
+    setReady(true);
+  }, [simulationLocked]);
 
   /* ---------- ramp animation for new rounds ---------- */
 
   useEffect(() => {
-    if (!rampActive) return;
+    if (!rampActive || simulationLocked) return;
 
-    const step = 0.05; // +0.05 every tick
-    const interval = 500; // 0.5s → ~10s to go 0 → 1
+    const step = 0.05;
+    const interval = 500;
 
     const id = setInterval(() => {
       setPhaseFactor((prev) => {
@@ -137,11 +167,13 @@ export default function MinePage() {
     }, interval);
 
     return () => clearInterval(id);
-  }, [rampActive]);
+  }, [rampActive, simulationLocked]);
 
   /* ---------- round lifecycle (heartbeat → winner → reset) ---------- */
 
   const endRound = useCallback(() => {
+    if (simulationLocked) return;
+
     // pick the highest totalWeight as winner
     setTiles((prev) => {
       if (!prev.length) return prev;
@@ -161,21 +193,22 @@ export default function MinePage() {
 
     // after reveal, reseed tiles and ramp numbers back up
     setTimeout(() => {
+      if (simulationLocked) return;
       setTiles(makeLiveTiles());
       setSelected(null);
       setWinnerId(null);
+      setCommittedNodeId(null); // reset lock for new round
       setPhaseFactor(0);
       setRampActive(true);
-    }, 3000); // 3s reveal
-  }, []);
+    }, 3000);
+  }, [simulationLocked]);
 
   // heartbeat timer that survives refresh via localStorage
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || simulationLocked) return;
 
-    // initialize / restore round end
     const initRoundEnd = () => {
-      const now = Date.now();
+      const nowTs = Date.now();
       let stored: number | null = null;
 
       try {
@@ -189,11 +222,10 @@ export default function MinePage() {
       }
 
       let endAt: number;
-      // reuse stored if it's in the future but not crazy far
-      if (stored && stored > now && stored - now < 2 * 60_000) {
+      if (stored && stored > nowTs && stored - nowTs < 2 * 60_000) {
         endAt = stored;
       } else {
-        endAt = now + 60_000; // new 60s round
+        endAt = nowTs + 60_000; // new 60s round
         try {
           window.localStorage.setItem(ROUND_KEY, String(endAt));
         } catch {
@@ -202,18 +234,18 @@ export default function MinePage() {
       }
 
       roundEndRef.current = endAt;
-      const remaining = Math.max(0, Math.ceil((endAt - now) / 1000));
+      const remaining = Math.max(0, Math.ceil((endAt - nowTs) / 1000));
       setSync(remaining);
     };
 
     initRoundEnd();
 
     const t = setInterval(() => {
-      const now = Date.now();
+      const nowTs = Date.now();
       let endAt = roundEndRef.current;
 
       if (!endAt) {
-        endAt = now + 60_000;
+        endAt = nowTs + 60_000;
         roundEndRef.current = endAt;
         try {
           window.localStorage.setItem(ROUND_KEY, String(endAt));
@@ -222,13 +254,13 @@ export default function MinePage() {
         }
       }
 
-      let remaining = Math.max(0, Math.ceil((endAt - now) / 1000));
+      let remaining = Math.max(0, Math.ceil((endAt - nowTs) / 1000));
 
       if (remaining <= 0) {
         // round over → pick winner + start a fresh 60s round
         endRound();
 
-        const newEnd = now + 60_000;
+        const newEnd = nowTs + 60_000;
         roundEndRef.current = newEnd;
         remaining = 60;
 
@@ -243,11 +275,11 @@ export default function MinePage() {
     }, 1000);
 
     return () => clearInterval(t);
-  }, [ready, endRound]);
+  }, [ready, endRound, simulationLocked]);
 
   // slower drift: every 7 seconds, only up, tiny increments
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || simulationLocked) return;
 
     const p = setInterval(() => {
       setTiles((prev) =>
@@ -256,31 +288,47 @@ export default function MinePage() {
           totalWeight: +(x.totalWeight + Math.random() * 0.005).toFixed(4),
         }))
       );
-    }, 7000); // 7s drift
+    }, 7000);
 
     return () => clearInterval(p);
-  }, [ready]);
+  }, [ready, simulationLocked]);
 
+  // 🔁 Commit pressure: one-shot 0.05 shard per round
   function commit() {
-    if (selected == null || winnerId !== null) return;
-    const i = selected - 1;
-    setTiles((prev) => {
-      const copy = [...prev];
-      copy[i] = {
-        ...copy[i],
-        myWeight: copy[i].myWeight + 1,
-        totalWeight: +(copy[i].totalWeight + 1).toFixed(4),
-      };
-      return copy;
-    });
+    // locked pre-launch → ignore
+    if (simulationLocked) return;
+
+    // no node selected, round resolving, or already committed this round → ignore
+    if (selected == null || winnerId !== null || committedNodeId !== null)
+      return;
+
+    setTiles((prev) =>
+      prev.map((tile) => {
+        if (tile.id !== selected) return tile;
+
+        const myWeight = +(tile.myWeight + PRESSURE_UNIT).toFixed(4);
+        const totalWeight = +(tile.totalWeight + PRESSURE_UNIT).toFixed(4);
+
+        return {
+          ...tile,
+          myWeight,
+          totalWeight,
+        };
+      })
+    );
+
+    // lock this wallet's pressure for the rest of the round
+    setCommittedNodeId(selected);
   }
 
-  // Adjust blocks (now meaning “SOL amount”) and keep totalSol in sync
+  // Adjust blocks (SOL amount) and keep totalSol in sync
   function bumpBlocks(delta: number) {
+    if (simulationLocked) return;
+
     setBlocks((prev) => {
       const raw = prev + delta;
-      const clampedBlocks = Math.max(0, parseFloat(raw.toFixed(2))); // e.g. 1.00, 1.10, etc.
-      const nextTotal = parseFloat((clampedBlocks * unitSol).toFixed(4)); // same value, 4dp
+      const clampedBlocks = Math.max(0, parseFloat(raw.toFixed(2)));
+      const nextTotal = parseFloat((clampedBlocks * unitSol).toFixed(4));
       setTotalSol(nextTotal);
       return clampedBlocks;
     });
@@ -288,6 +336,8 @@ export default function MinePage() {
 
   // Manual SOL input
   function handleTotalInput(e: React.ChangeEvent<HTMLInputElement>) {
+    if (simulationLocked) return;
+
     const v = e.target.value;
     const n = parseFloat(v);
     if (isNaN(n) || n < 0) {
@@ -295,15 +345,18 @@ export default function MinePage() {
       setBlocks(0);
       return;
     }
-    const clampedSol = parseFloat(n.toFixed(4)); // keep 4dp for SOL
+    const clampedSol = parseFloat(n.toFixed(4));
     setTotalSol(clampedSol);
-    // reflect into “blocks” as 2dp
     setBlocks(parseFloat(clampedSol.toFixed(2)));
   }
 
   // 🔺 SEND SOL TO TREASURY ON DEPLOY
   async function handleDeploy() {
     try {
+      if (simulationLocked) {
+        alert("VEIN mining activates at launch.");
+        return;
+      }
       if (!wallet.publicKey) {
         alert("Connect wallet to deploy.");
         return;
@@ -342,10 +395,7 @@ export default function MinePage() {
       console.log("Deploy tx:", sig);
       alert(`Deploy sent (${totalSol.toFixed(4)} SOL).\nSignature:\n${sig}`);
 
-      // track bio-injection for this wallet
       setMyInjected((prev) => parseFloat((prev + totalSol).toFixed(4)));
-      // optional reset:
-      // setBlocks(0); setTotalSol(0);
     } catch (err) {
       console.error("Deploy error:", err);
       alert("Deploy failed or was rejected.");
@@ -355,12 +405,10 @@ export default function MinePage() {
   const roundRevealing = winnerId !== null;
 
   return (
-    // Background wrapper with image
     <div
       className="min-h-screen w-full bg-cover bg-center bg-no-repeat"
       style={{ backgroundImage: `url(${veinBg.src})` }}
     >
-      {/* Dark overlay so UI is readable */}
       <div className="min-h-screen w-full bg-black/75">
         <main className="w-full px-6 lg:px-10 2xl:px-16 py-12 animate-fadeIn">
           {/* Hero header */}
@@ -420,7 +468,7 @@ export default function MinePage() {
                       <button
                         key={t.id}
                         onClick={() => {
-                          if (roundRevealing) return;
+                          if (roundRevealing || simulationLocked) return;
                           setSelected(t.id);
                         }}
                         className={[
@@ -437,6 +485,7 @@ export default function MinePage() {
                           isWinner
                             ? "border-accent shadow-[0_0_40px_rgba(159,232,112,0.7)]"
                             : "",
+                          simulationLocked ? "cursor-default" : "",
                         ].join(" ")}
                       >
                         {/* rotating outer ring */}
@@ -447,7 +496,7 @@ export default function MinePage() {
                         {/* inner glow ring */}
                         <div className="absolute inset-5 rounded-full bg-accent/5 blur-xl pointer-events-none" />
 
-                        {/* 🔥 Upgraded inner content */}
+                        {/* inner content */}
                         <div className="relative z-10 flex flex-col items-center justify-center px-4">
                           {/* Name */}
                           <div className="text-sm md:text-base font-semibold text-center leading-tight mb-2">
@@ -550,21 +599,37 @@ export default function MinePage() {
                 <h3 className="font-medium mb-3">Field Protocols</h3>
                 <ul className="space-y-2 text-sm text-text-dim">
                   <li>
-                    Select an organ-node and press{" "}
-                    <span className="text-text-base">Commit</span> to apply
-                    synthetic pressure to its vascular weight.
+                    Each round, your wallet gets a{" "}
+                      <span className="text-text-base">
+                        single pressure shard (~0.05 weight)
+                      </span>
+                    . Select an organ-node and press{" "}
+                    <span className="text-text-base">Commit</span> to inject it.
                   </li>
                   <li>
-                    Your commit persists until the next heartbeat resolution,
-                    when the system reveals the winning node.
+                    Once committed, your shard is{" "}
+                    <span className="text-text-base">locked</span> for that
+                    heartbeat. You can’t stack or move it until the next round
+                    resolves.
                   </li>
                 </ul>
                 <button
                   onClick={commit}
-                  disabled={selected == null || roundRevealing}
+                  disabled={
+                    simulationLocked ||
+                    selected == null ||
+                    roundRevealing ||
+                    committedNodeId !== null
+                  }
                   className="mt-4 w-full h-10 rounded-lg bg-white text-black font-medium transition hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none"
                 >
-                  {roundRevealing ? "Resolving round…" : "Commit"}
+                  {simulationLocked
+                    ? "Activates at launch"
+                    : roundRevealing
+                    ? "Resolving round…"
+                    : committedNodeId !== null
+                    ? "Committed"
+                    : "Commit"}
                 </button>
               </div>
 
@@ -584,19 +649,22 @@ export default function MinePage() {
                     <span className="text-text-dim">Blocks</span>
                     <button
                       onClick={() => bumpBlocks(1)}
-                      className="h-9 px-3 rounded-lg border border-line bg-panel text-sm hover:border-accent/60 focus-visible:outline-none"
+                      disabled={simulationLocked}
+                      className="h-9 px-3 rounded-lg border border-line bg-panel text-sm hover:border-accent/60 focus-visible:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       +1
                     </button>
                     <button
                       onClick={() => bumpBlocks(0.1)}
-                      className="h-9 px-3 rounded-lg border border-line bg-panel text-sm hover:border-accent/60 focus-visible:outline-none"
+                      disabled={simulationLocked}
+                      className="h-9 px-3 rounded-lg border border-line bg-panel text-sm hover:border-accent/60 focus-visible:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       +0.1
                     </button>
                     <button
                       onClick={() => bumpBlocks(0.01)}
-                      className="h-9 px-3 rounded-lg border border-line bg-panel text-sm hover:border-accent/60 focus-visible:outline-none"
+                      disabled={simulationLocked}
+                      className="h-9 px-3 rounded-lg border border-line bg-panel text-sm hover:border-accent/60 focus-visible:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       +0.01
                     </button>
@@ -618,7 +686,8 @@ export default function MinePage() {
                         step={0.0001}
                         value={totalSol}
                         onChange={handleTotalInput}
-                        className="w-28 h-8 rounded-md bg-black/40 border border-line px-2 text-right font-mono text-sm focus-visible:outline-none focus:border-accent"
+                        disabled={simulationLocked}
+                        className="w-28 h-8 rounded-md bg-black/40 border border-line px-2 text-right font-mono text-sm focus-visible:outline-none focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                       <span className="text-xs text-text-dim">SOL</span>
                     </div>
@@ -627,10 +696,14 @@ export default function MinePage() {
 
                 <button
                   onClick={handleDeploy}
-                  disabled={!wallet.publicKey || totalSol <= 0}
+                  disabled={
+                    simulationLocked || !wallet.publicKey || totalSol <= 0
+                  }
                   className="w-full h-11 rounded-xl bg-line/30 flex items-center justify-center text-text-base border border-line hover:border-accent/60 transition disabled:opacity-60 disabled:cursor-not-allowed focus-visible:outline-none"
                 >
-                  {wallet.publicKey
+                  {simulationLocked
+                    ? "Deploy unlocks at launch"
+                    : wallet.publicKey
                     ? totalSol > 0
                       ? `Deploy (${totalSol.toFixed(4)} SOL)`
                       : "Deploy"
@@ -639,6 +712,28 @@ export default function MinePage() {
               </div>
             </aside>
           </section>
+
+          {/* 🔒 Pre-launch full-screen overlay */}
+          {beforeLaunch && (
+            <div className="fixed inset-0 z-[999] backdrop-blur-xl bg-black/80 flex items-center justify-center animate-fadeIn">
+              <div className="relative p-8 md:p-10 rounded-2xl bg-black/70 border border-white/10 shadow-2xl text-center max-w-md mx-auto">
+                {/* subtle inner frame */}
+                <div className="absolute inset-0 rounded-2xl border border-accent/30 opacity-40 pointer-events-none" />
+                <h2 className="text-2xl md:text-3xl font-semibold mb-3 tracking-wide">
+                  VEIN Genesis Booting…
+                </h2>
+                <p className="text-text-dim text-xs md:text-sm mb-6">
+                  The vascular engine is synchronizing for the first heartbeat.
+                </p>
+                <div className="text-4xl md:text-6xl font-mono tracking-widest text-accent">
+                  {launchCountdown}
+                </div>
+                <p className="mt-4 text-[11px] text-text-dim">
+                   Launching when the timer ends
+                </p>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </div>
